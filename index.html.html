@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Зона импульса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;700&display=swap">
+<style>
+/* Раскладка: полноэкранная сцена, интерфейс поверх. Слева внизу кнопка, справа вся поверхность для руля. */
+:root {
+  --bg: #07121f;
+  --panel: rgba(7, 18, 31, .9);
+  --ink: #e8f6ff;
+  --dim: #8fb0c8;
+  --zone: #38f26b;
+  --nitro: #27d0ff;
+  --err: #ff3b4a;
+  --amber: #ffc53d;
+  --disp: 'Orbitron', 'Arial Narrow', system-ui, sans-serif;
+  --body: 'Rajdhani', 'Arial Narrow', system-ui, sans-serif;
+  --gl: max(16px, env(safe-area-inset-left, 0px));
+  --gr: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; font-family: var(--body); font-size: 16px; }
+#app { position: relative; width: 100%; height: 100%; overflow: hidden; }
+canvas#c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hud > * { position: absolute; }
+.num { font-family: var(--disp); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .02em; text-shadow: 0 1px 8px rgba(0, 0, 0, .55); }
+#timer { left: var(--gl); top: 10px; font-size: clamp(22px, 5.2vh, 36px); }
+#speed { right: calc(var(--gr) + 56px); top: 8px; text-align: right; line-height: 1; }
+#spdv { font-size: clamp(30px, 8vh, 56px); }
+#speed small { font-family: var(--body); font-weight: 700; font-size: 14px; color: var(--dim); margin-left: 4px; letter-spacing: .12em; }
+#lapr { right: calc(var(--gr) + 56px); top: clamp(44px, 12vh, 74px); font-family: var(--body); font-weight: 700; font-size: clamp(16px, 4vh, 24px); letter-spacing: .14em; color: var(--ink); text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+#pause { right: var(--gr); top: 8px; width: 44px; height: 44px; pointer-events: auto; border: 2px solid var(--nitro); border-radius: 6px; background: rgba(7, 18, 31, .55); color: var(--nitro); font: 800 18px var(--disp); cursor: pointer; display: grid; place-items: center; padding: 0; }
+#pause:focus-visible, button:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+#arc { left: 50%; top: 8px; transform: translateX(-50%); display: flex; gap: 3px; align-items: flex-start; width: min(48vw, 420px); }
+#arc i { flex: 1 1 0; background: rgba(160, 190, 215, .26); border-radius: 2px; transform: skewX(-14deg); }
+#arc i.on { background: var(--zone); box-shadow: 0 0 8px rgba(56, 242, 107, .55); }
+#arc i.on.chg { background: #b4ffc7; }
+#arc i.on.err { background: var(--err); box-shadow: 0 0 8px rgba(255, 59, 74, .6); }
+#label { left: var(--gl); top: 24%; font-family: var(--disp); font-weight: 800; font-size: clamp(38px, 11vh, 92px); line-height: 1; opacity: 0; color: var(--zone); text-shadow: 0 2px 14px rgba(0, 0, 0, .6); }
+#label.live { color: #b4ffc7; }
+#label.good { color: var(--zone); text-shadow: 0 0 22px rgba(56, 242, 107, .8); }
+#label.ok { color: #e8f6ff; }
+#label.err { color: var(--err); text-shadow: 0 0 20px rgba(255, 59, 74, .7); }
+#label.nitro { color: var(--nitro); text-shadow: 0 0 20px rgba(39, 208, 255, .7); }
+#lights { left: 50%; top: 18%; transform: translateX(-50%); display: flex; gap: 14px; transition: opacity .25s; }
+#lights i { width: clamp(22px, 6vh, 38px); height: clamp(34px, 9vh, 56px); border-radius: 6px; background: #3a0f14; border: 2px solid #5a1c22; }
+#lights i.lit { background: #ff2a3a; border-color: #ff7a85; box-shadow: 0 0 18px rgba(255, 42, 58, .8); }
+#go { left: 50%; top: 22%; transform: translateX(-50%); font-family: var(--disp); font-weight: 800; font-size: clamp(44px, 14vh, 110px); color: var(--zone); text-shadow: 0 0 26px rgba(56, 242, 107, .8); }
+#mini { right: var(--gr); top: clamp(88px, 24vh, 130px); width: clamp(76px, 22vh, 112px); height: clamp(76px, 22vh, 112px); border-radius: 50%; background: rgba(7, 18, 31, .45); border: 2px solid rgba(232, 246, 255, .25); }
+#impulse { left: var(--gl); bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: clamp(92px, 27vh, 124px); height: clamp(92px, 27vh, 124px); border-radius: 50%; pointer-events: auto; touch-action: none; display: grid; place-items: center; border: 4px solid var(--zone); background: rgba(8, 40, 22, .55); box-shadow: 0 0 18px rgba(56, 242, 107, .45), inset 0 0 18px rgba(56, 242, 107, .25); cursor: pointer; transition: transform .06s, background .06s; }
+#impulse span { font-family: var(--disp); font-weight: 800; font-size: clamp(11px, 3.1vh, 15px); letter-spacing: .06em; color: var(--zone); }
+#impulse.down { transform: scale(.94); background: rgba(56, 242, 107, .5); }
+#impulse.down span { color: #05140a; }
+#steerpad { right: 0; top: 0; bottom: 0; width: 58%; pointer-events: auto; touch-action: none; }
+#steerhint { right: var(--gr); bottom: max(16px, env(safe-area-inset-bottom, 0px)); width: 150px; height: 28px; opacity: .65; }
+#steerhint .tr { position: absolute; left: 0; right: 0; top: 11px; height: 6px; border-radius: 3px; background: rgba(232, 246, 255, .3); }
+#thumb { position: absolute; left: 50%; top: 2px; width: 24px; height: 24px; margin-left: -12px; border-radius: 50%; background: var(--ink); }
+#steerhint small { position: absolute; right: 0; top: -22px; font-size: 13px; letter-spacing: .1em; color: var(--dim); white-space: nowrap; }
+#flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.ov { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(4, 10, 18, .84); padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); box-sizing: border-box; touch-action: manipulation; }
+.card { width: min(100%, 560px); max-height: 100%; overflow: auto; background: var(--panel); border: 1px solid rgba(232, 246, 255, .18); border-radius: 10px; padding: 18px 20px; box-sizing: border-box; }
+.card h1, .card h2 { margin: 0 0 4px; font-family: var(--disp); font-weight: 800; letter-spacing: .03em; text-wrap: balance; }
+.card h1 { font-size: clamp(22px, 5vw, 30px); }
+.card h2 { font-size: 20px; }
+.card p { margin: 6px 0; font-size: 17px; line-height: 1.3; color: var(--dim); }
+.card p b { color: var(--ink); font-weight: 700; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+button.b { font: 700 17px var(--body); letter-spacing: .06em; padding: 11px 16px; min-height: 44px; border-radius: 6px; border: 2px solid var(--zone); background: var(--zone); color: #04140a; cursor: pointer; touch-action: manipulation; }
+button.b.alt { background: transparent; color: var(--ink); border-color: rgba(232, 246, 255, .45); }
+.set { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; margin-top: 8px; font-size: 16px; }
+.set label { color: var(--ink); }
+.set output { font-family: var(--disp); font-size: 13px; color: var(--amber); text-align: right; }
+.set input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--zone); height: 28px; margin: 0; }
+.chk { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 16px; min-height: 36px; }
+.chk input { width: 22px; height: 22px; accent-color: var(--zone); }
+.big { font-family: var(--disp); font-weight: 800; font-size: clamp(34px, 9vw, 52px); color: var(--ink); line-height: 1.1; }
+.line { font-weight: 700; font-size: 20px; color: var(--amber); margin: 2px 0 8px; }
+#r-log { width: 100%; height: 90px; margin-top: 8px; background: #040a12; color: var(--ink); border: 1px solid rgba(232, 246, 255, .25); border-radius: 6px; font-size: 12px; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
+#c-pad { position: absolute; inset: 0; touch-action: manipulation; }
+#c-flash { width: 96px; height: 96px; border-radius: 50%; background: var(--zone); margin: 0 auto 8px; opacity: .12; }
+#calib .card { position: relative; text-align: center; z-index: 1; pointer-events: none; }
+#calib .card .row, #calib .card button { pointer-events: auto; }
+#calib .row { justify-content: center; }
+#nogl { position: absolute; inset: 0; z-index: 9; background: var(--bg); padding: 24px; box-sizing: border-box; font-size: 20px; }
+#rotate { position: absolute; inset: 0; z-index: 8; background: var(--bg); display: flex; align-items: center; justify-content: center; text-align: center; font: 700 22px var(--body); padding: 24px; letter-spacing: .04em; }
+</style>
+
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+  <div id="hud" aria-live="off">
+    <div id="timer" class="num">0:00.00</div>
+    <div id="speed" class="num"><span id="spdv">0</span><small>КМ/Ч</small></div>
+    <div id="lapr">КРУГ 1/2</div>
+    <div id="arc"></div>
+    <div id="label"></div>
+    <div id="lights"><i></i><i></i><i></i><i></i><i></i></div>
+    <div id="go" hidden>ВПЕРЁД</div>
+    <canvas id="mini" width="224" height="224"></canvas>
+    <button id="pause" type="button" aria-label="Меню">II</button>
+    <div id="steerhint"><small>РУЛЬ: веди пальцем</small><div class="tr"></div><div id="thumb"></div></div>
+  </div>
+  <div id="steerpad"></div>
+  <div id="impulse" role="button" aria-label="Импульс"><span>ИМПУЛЬС</span></div>
+  <div id="flash"></div>
+
+  <div id="start" class="ov">
+    <div class="card">
+      <h1>Зона импульса</h1>
+      <p>Прототип этапа 1: проверяем, приятно ли ловить заряд.</p>
+      <p><b>Руль:</b> веди пальцем влево и вправо по правой части экрана. На клавиатуре стрелки или A и D.</p>
+      <p><b>Импульс:</b> нажми кнопку внутри зелёной зоны, держи до 100% и отпусти до конца зоны. Отпустил после зоны: заряд сгорает. Нажал до зоны: отпусти и нажми заново внутри. Пробел на клавиатуре.</p>
+      <p>Голубые площадки дают нитро сами, красные полосы у края замедляют.</p>
+      <div class="row">
+        <button class="b" id="b-go" type="button">Поехали</button>
+        <button class="b alt" id="b-go-calib" type="button">Калибровка ввода</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="menu" class="ov" hidden>
+    <div class="card">
+      <h2>Пауза</h2>
+      <div class="set"><label for="s-charge">Дистанция заряда</label><output id="v-charge"></output><input id="s-charge" type="range" min="25" max="90" step="1"></div>
+      <div class="set"><label for="s-zone">Длина зон</label><output id="v-zone"></output><input id="s-zone" type="range" min="0.6" max="1.6" step="0.05"></div>
+      <div class="set"><label for="s-base">Скорость без импульса</label><output id="v-base"></output><input id="s-base" type="range" min="150" max="230" step="5"></div>
+      <div class="set"><label for="s-boost">Сила импульса</label><output id="v-boost"></output><input id="s-boost" type="range" min="30" max="120" step="5"></div>
+      <div class="chk"><input id="c-strict" type="checkbox"><label for="c-strict">Строгое правило: нажал до зоны, зона сгорает</label></div>
+      <div class="chk"><input id="c-mute" type="checkbox"><label for="c-mute">Звук</label></div>
+      <div class="set"><label>Компенсация задержки</label><output id="v-calib"></output></div>
+      <p>Длина зон применяется при следующем заезде.</p>
+      <div class="row">
+        <button class="b" id="b-resume" type="button">Продолжить</button>
+        <button class="b alt" id="b-restart" type="button">Заново</button>
+        <button class="b alt" id="b-calib" type="button">Калибровка</button>
+        <button class="b alt" id="b-calib0" type="button">Сбросить задержку</button>
+        <button class="b alt" id="b-full" type="button">Во весь экран</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="result" class="ov" hidden>
+    <div class="card">
+      <h2>Финиш</h2>
+      <div class="big" id="r-time">0:00.00</div>
+      <div class="line" id="r-line"></div>
+      <p id="r-laps"></p>
+      <p><b id="r-zones"></b></p>
+      <p id="r-errs"></p>
+      <p id="r-tip"></p>
+      <div class="row">
+        <button class="b" id="b-again" type="button">Ещё раз</button>
+        <button class="b alt" id="b-again-calib" type="button">Калибровка</button>
+        <button class="b alt" id="r-copy" type="button">Скопировать журнал</button>
+      </div>
+      <textarea id="r-log" hidden readonly aria-label="Журнал заезда"></textarea>
+    </div>
+  </div>
+
+  <div id="calib" class="ov" hidden>
+    <div id="c-pad" aria-label="Площадка для нажатий"></div>
+    <div class="card">
+      <h2>Калибровка ввода</h2>
+      <div id="c-flash"></div>
+      <p id="c-hint"></p>
+      <div class="num" id="c-count">0 / 10</div>
+      <p id="c-res"></p>
+      <div class="row">
+        <button class="b" id="c-apply" type="button" hidden>Применить</button>
+        <button class="b alt" id="c-retry" type="button" hidden>Заново</button>
+        <button class="b alt" id="c-cancel" type="button">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rotate" hidden>Поверни телефон горизонтально</div>
+  <div id="nogl" hidden>Не удалось запустить 3D в этом окне. Открой страницу в обычном браузере телефона или компьютера.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+/* ===== Ядро: детерминированная симуляция, без рендера ===== */
+var CFG = {
+  dt: 1 / 120,
+  trackLength: 3600,   // м, длина круга
+  trackWidth: 24,      // м
+  laps: 2,
+  countdown: 4.5,      // с до старта (5 огней по 0.8 с)
+  baseKph: 190,        // крейсерская скорость без импульса
+  boostKph: 60,        // добавка, пока идёт импульс
+  boost2Kph: 20,       // добавка при запасе импульса больше одного полного
+  accelKph: 60,        // км/ч в секунду
+  decelKph: 40,
+  redKph: 120,         // потолок скорости на красной полосе
+  redDecelKph: 100,
+  chargeDist: 45,      // м до 100% заряда
+  chargePow: 2.5,      // кривая: медленный старт, быстрый финиш
+  boostSec: 13,        // длительность импульса при 100%, с
+  boostMax: 26,        // максимум запаса, с
+  kickKph: 25,         // мгновенный рывок при 100%
+  padSec: 6,           // нитро-площадка, с импульса
+  steerRate: 15,       // м/с поперёк при полном руле
+  strictEarly: false,  // false = мягко: отпустил и нажал заново внутри зоны
+  calibMs: 0           // компенсация задержки ввода, мс
+};
+
+var ZONES = [
+  { s: 250, len: 130, x0: -12, x1: 12 },
+  { s: 640, len: 100, x0: -12, x1: 12 },
+  { s: 1010, len: 150, x0: -12, x1: 2 },
+  { s: 1430, len: 90, x0: -12, x1: 12 },
+  { s: 1760, len: 130, x0: -12, x1: 12 },
+  { s: 2150, len: 110, x0: -2, x1: 12 },
+  { s: 2480, len: 160, x0: -12, x1: 12 },
+  { s: 2860, len: 95, x0: -12, x1: 12 },
+  { s: 3250, len: 140, x0: -12, x1: 12 }
+];
+var PADS = [
+  { s: 480, len: 30, x0: -12, x1: -4 },
+  { s: 1250, len: 30, x0: 2, x1: 12 },
+  { s: 2000, len: 30, x0: -12, x1: -4 },
+  { s: 3050, len: 30, x0: -5, x1: 5 }
+];
+var REDS = [
+  { s: 880, len: 90, x0: -12, x1: -7 },
+  { s: 1620, len: 80, x0: 7, x1: 12 },
+  { s: 2330, len: 70, x0: -12, x1: -6.5 },
+  { s: 3140, len: 60, x0: 6.5, x1: 12 }
+];
+
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function mod(a, n) { return ((a % n) + n) % n; }
+
+/* Замкнутая трасса: гладкая петля, точки через каждый метр */
+function buildTrack(cfg) {
+  var N = 4000, i, pts = [], len = 0;
+  for (i = 0; i < N; i++) {
+    var t = i / N * Math.PI * 2;
+    var r = 1 + 0.28 * Math.sin(2 * t + 0.6) + 0.17 * Math.sin(3 * t + 1.9) + 0.07 * Math.sin(5 * t);
+    pts.push([r * Math.cos(t), r * Math.sin(t)]);
+  }
+  for (i = 0; i < N; i++) {
+    var a = pts[i], b = pts[(i + 1) % N];
+    len += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  var k = cfg.trackLength / len;
+  for (i = 0; i < N; i++) { pts[i][0] *= k; pts[i][1] *= k; }
+  var M = Math.round(cfg.trackLength), P = [], cum = 0, j = 0;
+  var cumArr = [0];
+  for (i = 0; i < N; i++) {
+    var p = pts[i], q = pts[(i + 1) % N];
+    cumArr.push(cumArr[i] + Math.hypot(q[0] - p[0], q[1] - p[1]));
+  }
+  for (var m = 0; m < M; m++) {
+    var target = m * cfg.trackLength / M;
+    while (j < N - 1 && cumArr[j + 1] < target) j++;
+    var seg = cumArr[j + 1] - cumArr[j];
+    var f = seg > 0 ? (target - cumArr[j]) / seg : 0;
+    var p0 = pts[j], p1 = pts[(j + 1) % N];
+    P.push([p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f]);
+  }
+  var T = [];
+  for (m = 0; m < M; m++) {
+    var pa = P[(m - 1 + M) % M], pb = P[(m + 1) % M];
+    var dx = pb[0] - pa[0], dz = pb[1] - pa[1], dl = Math.hypot(dx, dz) || 1;
+    T.push([dx / dl, dz / dl]);
+  }
+  function at(s) {
+    var u = mod(s, M), i0 = Math.floor(u), f = u - i0, i1 = (i0 + 1) % M;
+    var x = P[i0][0] + (P[i1][0] - P[i0][0]) * f;
+    var z = P[i0][1] + (P[i1][1] - P[i0][1]) * f;
+    var tx = T[i0][0] + (T[i1][0] - T[i0][0]) * f;
+    var tz = T[i0][1] + (T[i1][1] - T[i0][1]) * f;
+    var tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+    return { x: x, z: z, tx: tx, tz: tz, rx: -tz, rz: tx };
+  }
+  return { L: M, P: P, at: at };
+}
+
+/* Симуляция заезда: шаг фиксированный, вход = {steer:-1..1, down:bool} */
+function newSim(cfg, track, zones, pads, reds) {
+  var L = track.L;
+  var S = {
+    phase: 'countdown', cd: 0, t: 0, s: 0, lat: 0, v: 0, E: 0,
+    lap: 0, prevDown: false, live: 0, liveZone: -1, onRed: false,
+    lapTimes: [], finishTime: null, events: [], tick: 0,
+    zs: zones.map(function () { return { st: 'idle', pressJ: 0, entered: false }; }),
+    ps: pads.map(function () { return { acc: 0, on: false, done: false }; })
+  };
+  function emit(type, data) {
+    var e = { type: type, t: S.t, lap: S.lap };
+    if (data) for (var k in data) e[k] = data[k];
+    S.events.push(e);
+    return e;
+  }
+  function resetLap() {
+    S.zs.forEach(function (z) { z.st = 'idle'; z.entered = false; });
+    S.ps.forEach(function (p) { p.acc = 0; p.on = false; p.done = false; });
+  }
+  S.step = function (inp) {
+    var c = cfg, dt = c.dt, down = !!inp.down;
+    S.tick++;
+    if (S.phase === 'countdown') {
+      S.cd += dt;
+      if (S.cd >= c.countdown) { S.phase = 'racing'; S.t = 0; emit('go'); }
+      S.prevDown = down;
+      return;
+    }
+    if (S.phase === 'finished') {
+      S.v = Math.max(0, S.v - 30 / 3.6 * dt);
+      S.s += S.v * dt;
+      S.prevDown = down;
+      return;
+    }
+    S.t += dt;
+    var wall = c.trackWidth / 2 - 1.2;
+    var st = clamp(inp.steer || 0, -1, 1);
+    S.lat += st * c.steerRate * dt;
+    var scrape = false;
+    if (S.lat > wall) { S.lat = wall; scrape = st > 0; }
+    if (S.lat < -wall) { S.lat = -wall; scrape = st < 0; }
+    var sJ = S.s - S.v * c.calibMs / 1000;
+    var sl = mod(sJ, L);
+    var released = S.prevDown && !down, pressed = !S.prevDown && down;
+    S.live = 0; S.liveZone = -1;
+    for (var i = 0; i < zones.length; i++) {
+      var z = zones[i], zs = S.zs[i], end = z.s + z.len;
+      var inside = sl >= z.s && sl <= end;
+      var latOk = S.lat >= z.x0 - 0.5 && S.lat <= z.x1 + 0.5;
+      if (inside) {
+        if (!zs.entered) {
+          zs.entered = true;
+          if (down && !pressed && zs.st === 'idle') {
+            emit('early', { zone: i });
+            if (c.strictEarly) zs.st = 'burned';
+          }
+        }
+        if (pressed && zs.st === 'idle' && latOk) {
+          zs.st = 'charging'; zs.pressJ = sl; emit('press', { zone: i });
+        }
+      }
+      if (zs.st === 'charging') {
+        if (released) {
+          if (sl <= end) {
+            var d = Math.max(0, sl - zs.pressJ);
+            var x = Math.min(1, d / c.chargeDist);
+            var ch = Math.pow(x, c.chargePow);
+            zs.st = 'done';
+            if (ch >= 0.02) {
+              S.E = Math.min(c.boostMax, S.E + c.boostSec * ch);
+              S.v += c.kickKph / 3.6 * ch;
+            }
+            emit('impulse', { zone: i, charge: ch });
+          } else {
+            zs.st = 'done'; emit('late', { zone: i });
+          }
+        } else if (sl > end) {
+          zs.st = 'done'; emit('late', { zone: i });
+        } else {
+          S.live = Math.pow(Math.min(1, Math.max(0, sl - zs.pressJ) / c.chargeDist), c.chargePow);
+          S.liveZone = i;
+        }
+      } else if (zs.st === 'idle' && sl > end) {
+        zs.st = 'done'; emit('miss', { zone: i });
+      }
+    }
+    for (i = 0; i < pads.length; i++) {
+      var p = pads[i], ps = S.ps[i], pe = p.s + p.len;
+      var onP = sl >= p.s && sl <= pe && S.lat >= p.x0 - 0.5 && S.lat <= p.x1 + 0.5;
+      if (onP) { ps.acc += S.v * dt; ps.on = true; }
+      if (!ps.done && sl > pe) {
+        ps.done = true;
+        if (ps.acc > 0) {
+          var pc = Math.min(1, ps.acc / (p.len * 0.8));
+          S.E = Math.min(c.boostMax, S.E + c.padSec * pc);
+          emit('pad', { pad: i, charge: pc });
+        }
+      }
+    }
+    var red = false;
+    for (i = 0; i < reds.length; i++) {
+      var r = reds[i], sr = mod(S.s, L);
+      if (sr >= r.s && sr <= r.s + r.len && S.lat + 0.7 > r.x0 && S.lat - 0.7 < r.x1) red = true;
+    }
+    S.onRed = red;
+    var tk = c.baseKph + (S.E > 0 ? c.boostKph : 0) + (S.E > c.boostSec ? c.boost2Kph : 0);
+    if (red) tk = Math.min(tk, c.redKph);
+    var tv = tk / 3.6, dv = (red ? c.redDecelKph : c.decelKph) / 3.6;
+    if (scrape) dv += 20 / 3.6;
+    if (S.v < tv) S.v = Math.min(tv, S.v + c.accelKph / 3.6 * dt);
+    else S.v = Math.max(tv, S.v - dv * dt);
+    if (S.E > 0) S.E = Math.max(0, S.E - dt);
+    S.s += S.v * dt;
+    S.prevDown = down;
+    var lapNow = Math.floor(S.s / L);
+    if (lapNow > S.lap && lapNow < c.laps) {
+      var tl = S.t - (S.s - lapNow * L) / Math.max(S.v, 0.1);
+      var prev = S.lapTimes.length ? S.lapTimes.reduce(function (a, b) { return a + b; }, 0) : 0;
+      S.lapTimes.push(tl - prev);
+      S.lap = lapNow; resetLap(); emit('lap', { time: tl });
+    }
+    if (S.s >= c.laps * L) {
+      var tf = S.t - (S.s - c.laps * L) / Math.max(S.v, 0.1);
+      var pr = S.lapTimes.reduce(function (a, b) { return a + b; }, 0);
+      S.lapTimes.push(tf - pr);
+      S.finishTime = tf; S.phase = 'finished'; emit('finish', { time: tf });
+    }
+  };
+  return S;
+}
+
+if (typeof module !== 'undefined') module.exports = { CFG: CFG, ZONES: ZONES, PADS: PADS, REDS: REDS, buildTrack: buildTrack, newSim: newSim };
+
+</script>
+<script>
+'use strict';
+/* ===== Рендер, ввод, интерфейс ===== */
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* хранилище недоступно */ } }
+  };
+  function clampv(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function fmt(t) {
+    if (t === null || t === undefined) return '-:--.--';
+    var m = Math.floor(t / 60), s = t - m * 60;
+    return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2);
+  }
+  function rgb(h) { return [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255]; }
+
+  /* ---------- настройки ---------- */
+  var cfg = Object.assign({}, CFG);
+  var saved = store.get('zi.settings', {});
+  ['calibMs', 'chargeDist', 'baseKph', 'boostKph', 'strictEarly'].forEach(function (k) { if (saved[k] !== undefined) cfg[k] = saved[k]; });
+  var zoneScale = saved.zoneScale || 1;
+  function saveSettings() {
+    store.set('zi.settings', { calibMs: cfg.calibMs, chargeDist: cfg.chargeDist, baseKph: cfg.baseKph, boostKph: cfg.boostKph, strictEarly: cfg.strictEarly, zoneScale: zoneScale });
+  }
+
+  /* ---------- Three.js ---------- */
+  var canvas = $('c'), renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false, powerPreference: 'high-performance' });
+  } catch (err) {
+    $('nogl').hidden = false;
+    return;
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  var SKY = 0x9cc7e8;
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(SKY);
+  scene.fog = new THREE.Fog(SKY, 160, 1100);
+  var camera = new THREE.PerspectiveCamera(68, 2, 0.5, 4000);
+
+  var track = buildTrack(cfg);
+  var zones, world = null;
+
+  function Builder() { this.p = []; this.c = []; this.i = []; }
+  Builder.prototype.strip = function (s0, s1, x0, x1, y, step, colorFn) {
+    var n = Math.max(1, Math.ceil((s1 - s0) / step)), base = this.p.length / 3;
+    for (var k = 0; k <= n; k++) {
+      var s = Math.min(s1, s0 + k * step), a = track.at(s), col = colorFn(k, s);
+      this.p.push(a.x + a.rx * x0, y, a.z + a.rz * x0, a.x + a.rx * x1, y, a.z + a.rz * x1);
+      this.c.push(col[0], col[1], col[2], col[0], col[1], col[2]);
+      if (k > 0) { var i0 = base + (k - 1) * 2; this.i.push(i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2); }
+    }
+  };
+  Builder.prototype.wall = function (s0, s1, x, h, step, colorFn) {
+    var n = Math.max(1, Math.ceil((s1 - s0) / step)), base = this.p.length / 3;
+    for (var k = 0; k <= n; k++) {
+      var s = Math.min(s1, s0 + k * step), a = track.at(s), col = colorFn(k, s);
+      this.p.push(a.x + a.rx * x, 0, a.z + a.rz * x, a.x + a.rx * x, h, a.z + a.rz * x);
+      this.c.push(col[0], col[1], col[2], col[0], col[1], col[2]);
+      if (k > 0) { var i0 = base + (k - 1) * 2; this.i.push(i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2); }
+    }
+  };
+  Builder.prototype.mesh = function () {
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    g.setIndex(this.i);
+    return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  };
+
+  function yawOf(a) { return Math.atan2(-a.tx, -a.tz); }
+  function box(w, h, d, color) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: color })); }
+
+  function buildWorld() {
+    if (world) {
+      scene.remove(world);
+      world.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    }
+    world = new THREE.Group();
+    var L = track.L, W = cfg.trackWidth, hw = W / 2;
+    var cA = rgb(0xc4ced8), cB = rgb(0xb4c0cc), white = rgb(0xf4f8fc);
+
+    var sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshBasicMaterial({ color: 0x2f7399 }));
+    sea.rotation.x = -Math.PI / 2; sea.position.y = -8; world.add(sea);
+
+    var seed = 7;
+    function rnd() { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }
+    for (var i = 0; i < 46; i++) {
+      var ang = rnd() * Math.PI * 2, rad = 1150 + rnd() * 1500, ch = 70 + rnd() * 220, cr = 60 + rnd() * 150;
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(cr, ch, 6), new THREE.MeshBasicMaterial({ color: rnd() > 0.45 ? 0x3d7b4c : 0x66767f }));
+      cone.position.set(Math.cos(ang) * rad, ch / 2 - 10, Math.sin(ang) * rad);
+      world.add(cone);
+    }
+
+    var B = new Builder();
+    B.strip(0, L, -hw, hw, 0, 2, function (k) { return (Math.floor(k / 6) % 2) ? cA : cB; });
+    for (var s = 6; s < L - 8; s += 12) B.strip(s, s + 5, -0.15, 0.15, 0.12, 5, function () { return white; });
+    B.strip(0, L, -hw, -hw + 0.5, 0.12, 4, function () { return rgb(0x27d0ff); });
+    B.strip(0, L, hw - 0.5, hw, 0.12, 4, function () { return rgb(0x27d0ff); });
+    B.wall(0, L, -hw - 0.2, 1.1, 6, function (k) { return (Math.floor(k / 4) % 2) ? rgb(0x2b3540) : rgb(0x3b4856); });
+    B.wall(0, L, hw + 0.2, 1.1, 6, function (k) { return (Math.floor(k / 4) % 2) ? rgb(0x2b3540) : rgb(0x3b4856); });
+    for (i = 0; i < 6; i++) for (var j = 0; j < 12; j++) {
+      var x0 = -hw + j * (W / 12), cc = ((i + j) % 2) ? rgb(0x10161d) : white;
+      B.strip(i * 1.2, i * 1.2 + 1.2, x0, x0 + W / 12, 0.14, 1.2, function () { return cc; });
+    }
+    world.add(B.mesh());
+
+    var Z = new Builder();
+    zones.forEach(function (z) {
+      Z.strip(z.s, z.s + z.len, z.x0, z.x1, 0.2, 2, function (k) { return (k % 2) ? rgb(0x2fe85a) : rgb(0x1fb844); });
+    });
+    PADS.forEach(function (p) {
+      Z.strip(p.s, p.s + p.len, p.x0, p.x1, 0.22, 3, function (k) { return (k % 2) ? rgb(0x27d0ff) : rgb(0x8cecff); });
+    });
+    REDS.forEach(function (r) {
+      Z.strip(r.s, r.s + r.len, r.x0, r.x1, 0.24, 3, function (k) { return (k % 2) ? rgb(0xd0202c) : rgb(0x8f1019); });
+    });
+    world.add(Z.mesh());
+
+    zones.forEach(function (z) {
+      var a = track.at(z.s), g = new THREE.Group();
+      g.position.set(a.x, 0, a.z); g.rotation.y = yawOf(a);
+      var x0 = Math.max(z.x0, -hw + 0.4), x1 = Math.min(z.x1, hw - 0.4);
+      var p0 = box(0.5, 6, 0.5, 0x39ff5a), p1 = box(0.5, 6, 0.5, 0x39ff5a), bar = box(x1 - x0, 0.5, 0.5, 0x39ff5a);
+      p0.position.set(x0, 3, 0); p1.position.set(x1, 3, 0); bar.position.set((x0 + x1) / 2, 6, 0);
+      g.add(p0, p1, bar);
+      var e = track.at(z.s + z.len), g2 = new THREE.Group();
+      g2.position.set(e.x, 0, e.z); g2.rotation.y = yawOf(e);
+      var q0 = box(0.4, 2.2, 0.4, 0xffc53d), q1 = box(0.4, 2.2, 0.4, 0xffc53d);
+      q0.position.set(x0, 1.1, 0); q1.position.set(x1, 1.1, 0);
+      g2.add(q0, q1);
+      world.add(g, g2);
+    });
+
+    var poleW = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 7, 0.5), new THREE.MeshBasicMaterial({ color: 0xe8eef4 }), 260);
+    var poleR = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 7, 0.5), new THREE.MeshBasicMaterial({ color: 0xe0303c }), 260);
+    var m4 = new THREE.Matrix4(), nW = 0, nR = 0;
+    for (var ps = 0; ps < L; ps += 30) {
+      var pa = track.at(ps);
+      [-1, 1].forEach(function (side) {
+        m4.makeTranslation(pa.x + pa.rx * (hw + 1.4) * side, 3.5, pa.z + pa.rz * (hw + 1.4) * side);
+        if (((ps / 30) | 0) % 2) { if (nW < 260) poleW.setMatrixAt(nW++, m4); } else if (nR < 260) poleR.setMatrixAt(nR++, m4);
+      });
+    }
+    poleW.count = nW; poleR.count = nR;
+    world.add(poleW, poleR);
+    scene.add(world);
+  }
+
+  /* байк */
+  var bike = new THREE.Group(), flame;
+  (function () {
+    var body = box(0.55, 0.45, 2.2, 0x1a2f8f); body.position.y = 0.6;
+    var tank = box(0.6, 0.14, 1.2, 0xe0283a); tank.position.set(0, 0.9, -0.1);
+    var rider = box(0.5, 0.75, 0.5, 0x0d0f14); rider.position.set(0, 1.2, 0.2);
+    var head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), new THREE.MeshBasicMaterial({ color: 0x1a2f8f })); head.position.set(0, 1.72, 0.05);
+    var wf = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.25, 10), new THREE.MeshBasicMaterial({ color: 0x0b0c10 })); wf.rotation.z = Math.PI / 2; wf.position.set(0, 0.38, -0.95);
+    var wr = wf.clone(); wr.position.z = 0.95;
+    var fg = new THREE.ConeGeometry(0.24, 2.2, 8); fg.rotateX(Math.PI / 2); fg.translate(0, 0, 1.1);
+    flame = new THREE.Mesh(fg, new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.85 }));
+    flame.position.set(0, 0.55, 1.1);
+    bike.add(body, tank, rider, head, wf, wr, flame);
+    scene.add(bike);
+  })();
+
+  /* ---------- состояние ---------- */
+  var sim, evIdx = 0, paused = true, phaseUi = 'start', cued = {};
+  var best = store.get('zi.best', null);
+  var label = { text: '', kind: '', until: 0 };
+  var camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), camInit = false;
+  var resultShownAt = 0, finishedUi = false;
+
+  function scaledZones() {
+    return ZONES.map(function (z) { return { s: z.s, len: Math.round(z.len * zoneScale), x0: z.x0, x1: z.x1 }; });
+  }
+  function restart() {
+    zones = scaledZones();
+    buildWorld();
+    drawMiniBase();
+    sim = newSim(cfg, track, zones, PADS, REDS);
+    evIdx = 0; cued = {}; camInit = false; finishedUi = false; resultShownAt = 0;
+    label.text = ''; label.until = 0;
+    $('result').hidden = true; $('go').hidden = true;
+    paused = false;
+  }
+
+  /* ---------- ввод ---------- */
+  var keys = { l: false, r: false, imp: false }, btnDown = false, touchSteer = 0, steerId = null, steerX0 = 0;
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.l = true;
+    else if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.r = true;
+    else if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'ArrowUp') {
+      if (calib.active) { calibTap(e.timeStamp); } else keys.imp = true;
+    } else if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); }
+    else return;
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', function (e) {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.l = false;
+    else if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.r = false;
+    else if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'ArrowUp') keys.imp = false;
+  });
+  var imp = $('impulse');
+  imp.addEventListener('pointerdown', function (e) {
+    e.preventDefault(); audio();
+    try { imp.setPointerCapture(e.pointerId); } catch (x) { /* не критично */ }
+    btnDown = true; imp.classList.add('down');
+  });
+  function btnUp() { btnDown = false; imp.classList.remove('down'); }
+  imp.addEventListener('pointerup', btnUp);
+  imp.addEventListener('pointercancel', btnUp);
+  imp.addEventListener('lostpointercapture', btnUp);
+  var pad = $('steerpad');
+  pad.addEventListener('pointerdown', function (e) {
+    if (steerId !== null) return;
+    e.preventDefault(); audio();
+    steerId = e.pointerId; steerX0 = e.clientX;
+    try { pad.setPointerCapture(e.pointerId); } catch (x) { /* не критично */ }
+  });
+  pad.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== steerId) return;
+    var R = 64, dx = e.clientX - steerX0;
+    if (dx > R) { steerX0 = e.clientX - R; dx = R; }
+    if (dx < -R) { steerX0 = e.clientX + R; dx = -R; }
+    touchSteer = dx / R;
+  });
+  function steerEnd(e) { if (e.pointerId === steerId) { steerId = null; touchSteer = 0; } }
+  pad.addEventListener('pointerup', steerEnd);
+  pad.addEventListener('pointercancel', steerEnd);
+  pad.addEventListener('lostpointercapture', steerEnd);
+  function getInput() {
+    var st = touchSteer + (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
+    return { steer: clampv(st, -1, 1), down: btnDown || keys.imp };
+  }
+
+  /* ---------- звук ---------- */
+  var AC = null, muted = store.get('zi.mute', false), chargeOsc = null, chargeGain = null;
+  function audio() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+    if (AC && AC.state === 'suspended') { try { AC.resume(); } catch (e) { /* нет звука */ } }
+    return AC;
+  }
+  function beep(f, d, type, g) {
+    if (muted || !AC) return;
+    try {
+      var o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime;
+      o.type = type || 'sine'; o.frequency.value = f;
+      gn.gain.setValueAtTime(g || 0.05, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(gn); gn.connect(AC.destination); o.start(t); o.stop(t + d + 0.02);
+    } catch (e) { /* нет звука */ }
+  }
+  function chargeTone(on, live) {
+    try {
+      if (on && AC && !muted) {
+        if (!chargeOsc) {
+          chargeOsc = AC.createOscillator(); chargeGain = AC.createGain();
+          chargeOsc.type = 'triangle'; chargeGain.gain.value = 0.035;
+          chargeOsc.connect(chargeGain); chargeGain.connect(AC.destination); chargeOsc.start();
+        }
+        chargeOsc.frequency.value = 220 + 780 * live;
+      } else if (chargeOsc) { chargeOsc.stop(); chargeOsc = null; }
+    } catch (e) { chargeOsc = null; }
+  }
+  function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* не поддерживается */ } }
+
+  /* ---------- интерфейс ---------- */
+  var arcEl = $('arc'), segs = [];
+  for (var si = 0; si < 29; si++) {
+    var sg = document.createElement('i'); sg.style.height = (22 - Math.abs(si - 14) * 0.9) + 'px';
+    arcEl.appendChild(sg); segs.push(sg);
+  }
+  var lastTxt = {};
+  function setText(id, v) { if (lastTxt[id] !== v) { lastTxt[id] = v; $(id).textContent = v; } }
+  var lights = [].slice.call(document.querySelectorAll('#lights i'));
+  var arcLast = -1, arcErr = false;
+
+  function setLabel(text, kind, ms) { label.text = text; label.kind = kind; label.until = performance.now() + (ms || 1400); }
+  function flashScreen(color, a) {
+    var f = $('flash'); f.style.transition = 'none'; f.style.background = color; f.style.opacity = a;
+    void f.offsetWidth; f.style.transition = 'opacity .5s'; f.style.opacity = 0;
+  }
+
+  function processEvents() {
+    while (evIdx < sim.events.length) {
+      var e = sim.events[evIdx++];
+      if (e.type === 'impulse') {
+        var pc = Math.round(e.charge * 100);
+        if (e.charge >= 0.02) { setLabel(pc + '%', e.charge >= 0.95 ? 'good' : 'ok'); flashScreen('#38f26b', 0.22 * e.charge); beep(500 + 700 * e.charge, 0.18, 'square', 0.04); vibrate(e.charge >= 0.95 ? 30 : 12); }
+        else setLabel('0%', 'ok');
+      } else if (e.type === 'late') {
+        setLabel('ПОЗДНО', 'err'); beep(130, 0.28, 'sawtooth', 0.06); vibrate(45); arcErr = true;
+      } else if (e.type === 'early') {
+        setLabel('РАНО', 'err'); beep(150, 0.2, 'sawtooth', 0.05); vibrate(30); arcErr = true;
+      } else if (e.type === 'pad') {
+        setLabel('НИТРО', 'nitro', 1000); flashScreen('#27d0ff', 0.18); beep(900, 0.12, 'sine', 0.04);
+      } else if (e.type === 'lap') {
+        setLabel('КРУГ ' + (sim.lap + 1), 'ok', 1400);
+      } else if (e.type === 'go') {
+        $('go').hidden = false; setTimeout(function () { $('go').hidden = true; }, 900); beep(880, 0.35, 'square', 0.05);
+      }
+    }
+  }
+
+  function updateHud(now) {
+    var t = sim.phase === 'finished' ? sim.finishTime : (sim.phase === 'racing' ? sim.t : 0);
+    setText('timer', fmt(t));
+    setText('spdv', String(Math.round(sim.v * 3.6)));
+    setText('lapr', 'КРУГ ' + Math.min(sim.lap + 1, cfg.laps) + '/' + cfg.laps);
+    var live = sim.liveZone >= 0 && sim.phase === 'racing';
+    if (live) { label.text = Math.round(sim.live * 100) + '%'; label.kind = 'live'; label.until = now + 400; }
+    var lab = $('label');
+    setText('label', label.text);
+    var op = clampv((label.until - now) / 350, 0, 1);
+    lab.style.opacity = op; lab.className = label.kind;
+    if (op <= 0) arcErr = false;
+    var frac = live ? sim.live : clampv(sim.E / cfg.boostMax, 0, 1);
+    var n = Math.round(frac * 15);
+    var key = n * 10 + (arcErr ? 1 : 0) + (live ? 2 : 0);
+    if (key !== arcLast) {
+      arcLast = key;
+      for (var i = 0; i < 29; i++) {
+        var on = Math.abs(i - 14) < n;
+        segs[i].className = (on ? 'on' : '') + (on && arcErr ? ' err' : '') + (on && live ? ' chg' : '');
+      }
+    }
+    var lit = sim.phase === 'countdown' ? Math.min(5, Math.floor(sim.cd / 0.8)) : 0;
+    for (var k = 0; k < 5; k++) lights[k].className = k < lit ? 'lit' : '';
+    $('lights').style.opacity = sim.phase === 'countdown' ? 1 : 0;
+    var errTone = label.kind === 'err' && op > 0;
+    $('hud').classList.toggle('boost', sim.E > 0);
+    $('thumb').style.transform = 'translateX(' + (getInput().steer * 56) + 'px)';
+    if (errTone) { /* красная дуга уже показана */ }
+  }
+
+  /* миникарта */
+  var mini = $('mini'), mctx = mini.getContext('2d'), miniBase = document.createElement('canvas');
+  miniBase.width = mini.width; miniBase.height = mini.height;
+  var bounds = (function () {
+    var x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    track.P.forEach(function (p) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); });
+    return { x0: x0, x1: x1, z0: z0, z1: z1 };
+  })();
+  function mp(x, z) {
+    var w = mini.width, pad2 = 18, sc = Math.min((w - pad2 * 2) / (bounds.x1 - bounds.x0), (w - pad2 * 2) / (bounds.z1 - bounds.z0));
+    return [pad2 + (x - bounds.x0) * sc, pad2 + (z - bounds.z0) * sc];
+  }
+  function drawMiniBase() {
+    var c = miniBase.getContext('2d');
+    c.clearRect(0, 0, miniBase.width, miniBase.height);
+    function line(s0, s1, color, wd) {
+      c.strokeStyle = color; c.lineWidth = wd; c.lineCap = 'round'; c.beginPath();
+      for (var s = s0; s <= s1; s += 6) { var a = track.at(s), q = mp(a.x, a.z); if (s === s0) c.moveTo(q[0], q[1]); else c.lineTo(q[0], q[1]); }
+      c.stroke();
+    }
+    line(0, track.L, 'rgba(232,246,255,.55)', 5);
+    zones.forEach(function (z) { line(z.s, z.s + z.len, '#38f26b', 6); });
+    PADS.forEach(function (p) { line(p.s, p.s + p.len, '#27d0ff', 6); });
+    REDS.forEach(function (r) { line(r.s, r.s + r.len, '#ff3b4a', 6); });
+  }
+  function drawMini() {
+    mctx.clearRect(0, 0, mini.width, mini.height);
+    mctx.drawImage(miniBase, 0, 0);
+    var a = track.at(sim.s), q = mp(a.x, a.z);
+    mctx.fillStyle = '#ffc53d'; mctx.beginPath(); mctx.arc(q[0], q[1], 6, 0, 6.2832); mctx.fill();
+  }
+
+  /* ---------- меню, результаты ---------- */
+  function showOnly(id) {
+    ['start', 'menu', 'result', 'calib'].forEach(function (n) { $(n).hidden = (n !== id); });
+  }
+  function togglePause(force) {
+    if (calib.active || phaseUi === 'start') return;
+    var want = force === undefined ? !paused : force;
+    paused = want;
+    if (paused) { showOnly('menu'); chargeTone(false, 0); } else { $('menu').hidden = true; }
+  }
+  $('pause').addEventListener('click', function () { audio(); togglePause(true); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden && phaseUi === 'race') togglePause(true); });
+
+  function bindSlider(id, valId, getv, setv, fmtv) {
+    var el = $(id), vl = $(valId);
+    el.value = getv(); vl.textContent = fmtv(getv());
+    el.addEventListener('input', function () { var v = parseFloat(el.value); setv(v); vl.textContent = fmtv(v); saveSettings(); });
+  }
+  bindSlider('s-charge', 'v-charge', function () { return cfg.chargeDist; }, function (v) { cfg.chargeDist = v; }, function (v) { return v + ' м'; });
+  bindSlider('s-base', 'v-base', function () { return cfg.baseKph; }, function (v) { cfg.baseKph = v; }, function (v) { return v + ' км/ч'; });
+  bindSlider('s-boost', 'v-boost', function () { return cfg.boostKph; }, function (v) { cfg.boostKph = v; }, function (v) { return '+' + v + ' км/ч'; });
+  bindSlider('s-zone', 'v-zone', function () { return zoneScale; }, function (v) { zoneScale = v; }, function (v) { return '×' + v.toFixed(2); });
+  var strict = $('c-strict');
+  strict.checked = !!cfg.strictEarly;
+  strict.addEventListener('change', function () { cfg.strictEarly = strict.checked; saveSettings(); });
+  var mute = $('c-mute');
+  mute.checked = !muted;
+  mute.addEventListener('change', function () { muted = !mute.checked; store.set('zi.mute', muted); if (muted) chargeTone(false, 0); });
+  function updCalibLabel() { setText('v-calib', cfg.calibMs + ' мс'); }
+  $('b-resume').addEventListener('click', function () { audio(); togglePause(false); });
+  $('b-restart').addEventListener('click', function () { audio(); startRace(); });
+  $('b-calib').addEventListener('click', function () { audio(); openCalib(); });
+  $('b-calib0').addEventListener('click', function () { cfg.calibMs = 0; saveSettings(); updCalibLabel(); });
+  $('b-full').addEventListener('click', function () {
+    try { var r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(function () { /* отказ */ }); } catch (e) { /* отказ */ }
+  });
+  $('b-go').addEventListener('click', function () { audio(); startRace(); });
+  $('b-go-calib').addEventListener('click', function () { audio(); openCalib(); });
+  $('b-again').addEventListener('click', function () { audio(); startRace(); });
+  $('b-again-calib').addEventListener('click', function () { audio(); openCalib(); });
+
+  function startRace() { phaseUi = 'race'; showOnly(''); restart(); }
+
+  function stats() {
+    var ev = sim.events, c = { full: 0, part: 0, late: 0, early: 0, miss: 0, sum: 0 };
+    ev.forEach(function (e) {
+      if (e.type === 'impulse') { if (e.charge >= 0.95) c.full++; else c.part++; c.sum += e.charge; }
+      else if (e.type === 'late') c.late++;
+      else if (e.type === 'early') c.early++;
+      else if (e.type === 'miss') c.miss++;
+    });
+    c.total = zones.length * cfg.laps;
+    return c;
+  }
+  function journal() {
+    var st = stats();
+    return JSON.stringify({
+      version: 'proto-1', finish: sim.finishTime, laps: sim.lapTimes,
+      settings: { calibMs: cfg.calibMs, chargeDist: cfg.chargeDist, baseKph: cfg.baseKph, boostKph: cfg.boostKph, zoneScale: zoneScale, strictEarly: cfg.strictEarly },
+      stats: st,
+      events: sim.events.filter(function (e) { return e.type !== 'press'; }).map(function (e) { return [e.type, +e.t.toFixed(2), e.zone === undefined ? null : e.zone, e.charge === undefined ? null : +e.charge.toFixed(2)]; })
+    });
+  }
+  function showResult() {
+    var st = stats(), t = sim.finishTime, line;
+    if (best === null || t < best) { line = best === null ? 'Первый результат' : 'Новый рекорд, на ' + (best - t).toFixed(2) + ' с быстрее'; best = t; store.set('zi.best', best); }
+    else line = (t - best).toFixed(2) + ' с до рекорда (' + fmt(best) + ')';
+    setText('r-time', fmt(t));
+    setText('r-line', line);
+    setText('r-laps', sim.lapTimes.map(fmt).join('  ·  '));
+    setText('r-zones', st.full + ' из ' + st.total + ' зон на 100%');
+    setText('r-errs', 'Не добрал: ' + st.part + ' · Поздно: ' + st.late + ' · Рано: ' + st.early + ' · Пропущено: ' + st.miss);
+    var tip = st.late > 0 ? 'Совет: отпускай сразу, когда процент дойдёт до 100%, не жди конца зоны.' :
+      st.part > st.full ? 'Совет: нажимай в самом начале зоны, чтобы успеть набрать 100%.' :
+      st.early > 0 ? 'Совет: перед зоной кнопка должна быть отпущена.' : 'Чисто. Попробуй побить время.';
+    setText('r-tip', tip);
+    $('r-copy').textContent = 'Скопировать журнал';
+    $('r-log').hidden = true;
+    showOnly('result');
+  }
+  $('r-copy').addEventListener('click', function () {
+    var txt = journal(), ta = $('r-log');
+    function fallback() { ta.hidden = false; ta.value = txt; ta.focus(); ta.select(); $('r-copy').textContent = 'Выдели и скопируй текст ниже'; }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () { $('r-copy').textContent = 'Скопировано'; }, fallback);
+      } else fallback();
+    } catch (e) { fallback(); }
+  });
+
+  /* ---------- калибровка задержки ---------- */
+  var calib = { active: false, beats: [], taps: [], n: 0, next: 0, flashUntil: 0 };
+  function openCalib() {
+    paused = true; calib.active = true; calib.beats = []; calib.taps = []; calib.n = 0; calib.next = performance.now() + 1200;
+    $('c-res').textContent = ''; $('c-apply').hidden = true; $('c-retry').hidden = true;
+    $('c-hint').textContent = 'Нажимай ИМПУЛЬС (или пробел) в момент вспышки и звука. 10 ударов.';
+    showOnly('calib');
+  }
+  function calibTap(ts) { if (calib.active && calib.beats.length) calib.taps.push(ts); }
+  $('c-pad').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); calibTap(e.timeStamp); });
+  function calibTick(now) {
+    if (!calib.active) return;
+    if (calib.n < 10 && now >= calib.next) {
+      calib.beats.push(now); calib.n++; calib.next = now + 900; calib.flashUntil = now + 120; beep(660, 0.08, 'square', 0.05);
+    }
+    $('c-flash').style.opacity = now < calib.flashUntil ? 1 : 0.12;
+    setText('c-count', calib.n + ' / 10');
+    if (calib.n >= 10 && now > calib.next + 300 && !calib.done) {
+      calib.done = true;
+      var offs = [];
+      calib.taps.forEach(function (tp) {
+        var bestD = 1e9;
+        calib.beats.forEach(function (b, idx) { if (idx >= 2 && Math.abs(tp - b) < Math.abs(bestD)) bestD = tp - b; });
+        if (Math.abs(bestD) < 400) offs.push(bestD);
+      });
+      if (offs.length < 4) { $('c-res').textContent = 'Мало нажатий. Попробуй ещё раз.'; $('c-retry').hidden = false; calib.result = null; }
+      else {
+        offs.sort(function (a, b) { return a - b; });
+        calib.result = Math.round(clampv(offs[Math.floor(offs.length / 2)], -100, 300));
+        $('c-res').textContent = 'Задержка: ' + calib.result + ' мс (по ' + offs.length + ' нажатиям)';
+        $('c-apply').hidden = false; $('c-retry').hidden = false;
+      }
+    }
+  }
+  $('c-apply').addEventListener('click', function () {
+    if (calib.result !== null && calib.result !== undefined) { cfg.calibMs = calib.result; saveSettings(); updCalibLabel(); }
+    closeCalib();
+  });
+  $('c-retry').addEventListener('click', function () { calib.done = false; openCalib(); });
+  $('c-cancel').addEventListener('click', closeCalib);
+  function closeCalib() {
+    calib.active = false; calib.done = false;
+    if (phaseUi === 'start') showOnly('start'); else showOnly('menu');
+  }
+
+  /* ---------- кадр ---------- */
+  var lastT = performance.now(), acc = 0, portrait = false;
+  function resize() {
+    var w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    var touch = false;
+    try { touch = window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(hover: none)').matches; } catch (e) { touch = false; }
+    portrait = touch && h > w && w < 720;
+    $('rotate').hidden = !portrait;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function renderFrame(dt, now) {
+    var a = track.at(sim.s), lat = sim.lat;
+    var bx = a.x + a.rx * lat, bz = a.z + a.rz * lat;
+    bike.position.set(bx, 0, bz);
+    var steer = getInput().steer;
+    bike.rotation.y = yawOf(a) - steer * 0.1;
+    bike.rotation.z = -steer * 0.3;
+    var boosting = sim.E > 0;
+    flame.material.color.setHex(boosting ? 0x39ff6a : 0x4aa8ff);
+    flame.scale.z = 0.5 + Math.min(1.6, sim.v / 60) * (boosting ? 1.2 : 0.8);
+    var dpos = new THREE.Vector3(bx - a.tx * 8 + a.rx * 0, 3.2, bz - a.tz * 8);
+    var dlook = new THREE.Vector3(bx + a.tx * 16, 1.4, bz + a.tz * 16);
+    if (!camInit) { camPos.copy(dpos); camLook.copy(dlook); camInit = true; }
+    var k = 1 - Math.exp(-dt * 9);
+    camPos.lerp(dpos, k); camLook.lerp(dlook, 1 - Math.exp(-dt * 12));
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+    var fov = 66 + 28 * Math.min(1, sim.v / (330 / 3.6));
+    if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
+    renderer.render(scene, camera);
+  }
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    var dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+    if (calib.active) { calibTick(now); return; }
+    if (!sim) return;
+    if (!paused && !portrait) {
+      acc += dt;
+      var guard = 0;
+      while (acc >= cfg.dt && guard++ < 40) { sim.step(getInput()); acc -= cfg.dt; }
+      if (guard >= 40) acc = 0;
+      processEvents();
+      var live = sim.liveZone >= 0 && sim.phase === 'racing';
+      chargeTone(live, sim.live);
+      if (sim.phase === 'racing') {
+        var sl = ((sim.s % track.L) + track.L) % track.L;
+        for (var i = 0; i < zones.length; i++) {
+          var key = sim.lap + ':' + i, ttz = (zones[i].s - sl) / Math.max(sim.v, 1);
+          if (!cued[key] && ttz > 0 && ttz < 1.0) { cued[key] = true; beep(1000, 0.05, 'sine', 0.035); }
+        }
+      }
+      if (sim.phase === 'finished' && !finishedUi) {
+        finishedUi = true; resultShownAt = now + 1500; chargeTone(false, 0);
+      }
+      if (finishedUi && resultShownAt && now >= resultShownAt) { resultShownAt = 0; showResult(); }
+    } else { chargeTone(false, 0); }
+    updHudSafe(now);
+    renderFrame(dt, now);
+    drawMini();
+  }
+  function updHudSafe(now) { updateHud(now); }
+
+  /* ---------- старт ---------- */
+  updCalibLabel();
+  zones = scaledZones();
+  buildWorld();
+  drawMiniBase();
+  sim = newSim(cfg, track, zones, PADS, REDS);
+  showOnly('start');
+  requestAnimationFrame(frame);
+})();
+
+</script>
+</body>
+</html>
